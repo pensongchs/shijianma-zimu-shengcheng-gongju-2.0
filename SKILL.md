@@ -1,14 +1,16 @@
 ---
 name: generate-timestamped-subtitles
-description: Generate timestamped Chinese subtitles from local audio or video files and export both SRT and Remotion Caption JSON. Use when the user asks to transcribe speech with timecodes, create captions for editing software, or align Remotion text and animation to an audio track.
+description: Generate Chinese SRT captions and a Remotion Caption JSON timeline from local audio or video using Whisper.cpp. Use for speech transcription with timecodes, subtitle export, or aligning video text and animation to speech. Fine token timing is embedded in the main JSON; automatic alignment remains an estimate.
 ---
 
 # 生成带时间码字幕
 
-把本地音频或视频转成两份可直接使用的文件：
+默认只交付两份可直接用于制作视频的文件，用户可以把这两份一起交给 Codex：
 
-- `*_自动时间码字幕.srt`：用于剪映、Premiere、达芬奇等剪辑软件。
-- `*_自动动效时间轴.json`：符合 Remotion `Caption` 结构，用于文字和动效对齐。
+- `*_自动时间码字幕.srt`：完整句级字幕与起止时间，可用于分镜定位或导入剪辑软件。
+- `*_自动动效时间轴.json`：保持 Remotion `Caption[]` 数组结构，与 SRT 逐句一致。每条字幕的 `tokens` 包含完整中文词元的精细时间，用于定位关键词、数字和动效；词元可能包含多个汉字。
+
+精细时间合并在主 JSON 内，校验由脚本内部完成。不默认生成或交付独立精细时间轴、校验报告或纠错文件；只有用户明确要求报告时才额外导出。
 
 ## 首次运行
 
@@ -50,13 +52,21 @@ description: Generate timestamped Chinese subtitles from local audio or video fi
 2. 运行：
 
    ```text
-   node "<本 Skill 目录>/scripts/run.mjs" "<当前电脑上的音频或视频完整路径>" "可选成品名" "可选输出目录"
+   node "<本 Skill 目录>/scripts/run.mjs" "<当前电脑上的音频或视频完整路径>" "可选成品名" "可选输出目录" [--fps 30]
    ```
 
-3. `run.mjs` 会自动检查运行环境；环境不完整时会停止并提示先运行 `setup.mjs`，不会输出假成品。
+3. `run.mjs` 会自动检查运行环境；环境不完整时会停止并提示先运行 `setup.mjs`，不会输出假成品。可追加目标视频帧率 `--fps 30`，JSON 会附对应帧率、绝对起止帧和帧数；不使用源文件帧率推断动效工程帧率。
 4. 等待转写完成，不要中途结束进程。默认中文 `small` 模型在本地运行，长音频需要一定时间。
 5. 从命令输出中读取两份成品的绝对路径并交付给用户。
-6. 提醒用户校对人名、地名、楼盘名和专业词；不要擅自改动时间码。
+6. 制作视频时，SRT 或 JSON 顶层条目用于句级定位；关键词和动效用各条目的 `tokens.startMs`/`tokens.endMs`。校验提示内部处理，有影响使用的异常只需一句话说明，交付文件仍为两份。
+7. 仅校正同音字、姓名、地名或专业词时保留时间码，并同步两份文件及对应词元文本。正文与实际配音不同时不能硬套时间轴；用户明确要求校时后，根据原音频局部修正并同步两份成品。
+
+## 时间精度与视频对齐
+
+- 毫秒是保存单位，不代表 1 毫秒识别准确度。当前 Whisper.cpp DTW 对齐网格为 20 毫秒，实际误差仍受语速、吞音、音乐和识别错误影响。
+- 脚本读取全部语音词元，合并不完整的中文 UTF-8 字节，使用相邻 DTW 转换点估计区间，句首句尾按附近可检测的静音局部修正。缺失或异常对齐点明确回退或合并并保留正文，不丢字、不按字数平均分配时间、不随意整体平移。
+- `timestampMs` 为单个对齐点，不等同于发音开始；字幕和动画使用 `startMs` 定位。正式制作前，核对原音频的开头、中间、结尾及低置信度、长词元或回退边界。未经听音或人工参照，不声称逐帧准确。
+- 时间零点为原文件播放起点，提取音轨保留起始偏移与内部时间间隙。转为帧时分别计算 `startFrame = round(startMs * fps / 1000)`、`endFrame = round(endMs * fps / 1000)`，时长取二者之差；不累计各段取整后的时长。截取片段时，全部局部时间减去同一个经确认的片段起点，保留片段内停顿。
 
 ## 路径与依赖规则
 
@@ -78,5 +88,8 @@ description: Generate timestamped Chinese subtitles from local audio or video fi
 - 转写命令退出码为 0。
 - `.srt` 和 `.json` 都已生成且非空。
 - SRT 至少包含序号、`开始时间 --> 结束时间` 和字幕正文。
-- JSON 可正常解析，且每条字幕包含 `text`、`startMs`、`endMs` 和 `timestampMs`。
+- JSON 顶层为可正常解析的数组，每条包含 `text`、`startMs`、`endMs`、`timestampMs` 和内嵌 `tokens`。
+- SRT 与 JSON 的条目数量、正文、顺序、起止逐条一致；每条 `tokens` 拼接正文与所属句子一致，时间区间在句内且无重叠。
+- 退出成功且两份输出合法只确认自动生成成功，不等同于听音准确率验收。
+- 修改边界算法后运行 `node "<本 Skill 目录>/scripts/alignment.test.mjs"`；修改交付结构后，用真实媒体核对两份成品及内嵌精细时间。
 - 输出路径只来自当前电脑的输入文件、用户指定目录或当前用户缓存目录。
