@@ -20,12 +20,6 @@ if (nodeMajor() < minimumNodeMajor) {
   process.exit(2);
 }
 
-const npm = resolveNpm();
-if (!npm) {
-  console.error('缺少 npm。请让 Codex 使用当前电脑可用的 Node.js LTS 与 npm。');
-  process.exit(2);
-}
-
 const status = readRuntimeStatus();
 if (!status.ready) {
   console.error('运行环境尚未完整安装：');
@@ -33,4 +27,5 @@ if (!status.ready) {
   process.exit(2);
 }
 
+console.log(`ffmpeg：${status.ffmpegPath}；ffprobe：${status.ffprobePath}`);
 console.log('运行环境检查通过');

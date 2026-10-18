@@ -1,3 +1,5 @@
+import {frameRange} from './alignment.mjs';
+
 // Keep the Remotion Caption[] interface; finer spoken units live inside each sentence.
 export const createVideoTimeline = ({captions, fineCaptions, report}) => {
   let cursor = 0;
@@ -8,7 +10,7 @@ export const createVideoTimeline = ({captions, fineCaptions, report}) => {
       if (token.startMs < caption.startMs || token.endMs > caption.endMs) {
         throw new Error(`第 ${index + 1} 句的精细时间超出句子范围，停止交付。`);
       }
-      tokens.push(token);
+      tokens.push({...token, ...(report.fps ? {fps: report.fps, ...frameRange(token.startMs, token.endMs, report.fps)} : {})});
     }
     if (!tokens.length || tokens.map((t) => t.text).join('').trim() !== caption.text) {
       throw new Error(`第 ${index + 1} 句的正文与精细时间不一致，停止交付。`);

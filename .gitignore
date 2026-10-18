@@ -1,0 +1,10 @@
+node_modules/
+runtime/
+models/
+*.bin
+*.wav
+*.mp4
+*.MP4
+*.mov
+*.MOV
+.DS_Store

@@ -48,7 +48,7 @@ export const modelPath = path.resolve(
     || (fs.existsSync(legacyModelPath) ? legacyModelPath : defaultModelPath),
 );
 export const modelDir = path.dirname(modelPath);
-export const whisperExecutable = path.join(whisperDir, process.platform === 'win32' ? 'main.exe' : 'main');
+export const whisperExecutable = process.env.CODEX_SUBTITLE_WHISPER_EXECUTABLE || path.join(whisperDir, process.platform === 'win32' ? 'main.exe' : 'main');
 
 export const nodeMajor = () => Number(process.versions.node.split('.')[0]);
 
@@ -93,28 +93,23 @@ export const resolveNpm = () => {
 
 export const readRuntimeStatus = () => {
   const missing = [];
-  const packagePath = path.join(runtimeDir, 'package.json');
-  if (!fs.existsSync(packagePath)) missing.push('运行环境 package.json');
-  if (!fs.existsSync(path.join(runtimeDir, 'node_modules', '@remotion', 'install-whisper-cpp'))) {
-    missing.push('Remotion Whisper npm 依赖');
-  }
   if (!fs.existsSync(whisperExecutable)) missing.push('Whisper.cpp 主程序');
-  if (!fs.existsSync(modelPath) || fs.statSync(modelPath).size === 0) {
-    missing.push(`${modelName} 中文模型（当前配置：${modelPath}）`);
-  }
-
-  let ffmpegPath = null;
-  if (fs.existsSync(packagePath)) {
+  if (!fs.existsSync(modelPath) || fs.statSync(modelPath).size === 0) missing.push(`${modelName} 中文模型（${modelPath}）`);
+  let requireFromRuntime;
+  try { requireFromRuntime = createRequire(path.join(runtimeDir, 'package.json')); } catch {}
+  const resolveTool = (name, envName, packageName) => {
+    const explicit = process.env[envName];
+    if (explicit && commandExists(explicit, ['-version'])) return explicit;
+    if (commandExists(name, ['-version'])) return name;
     try {
-      const requireFromRuntime = createRequire(packagePath);
-      ffmpegPath = requireFromRuntime('ffmpeg-static');
-      if (!ffmpegPath || !fs.existsSync(ffmpegPath)) missing.push('独立 ffmpeg');
-    } catch {
-      missing.push('独立 ffmpeg');
-    }
-  } else {
-    missing.push('独立 ffmpeg');
-  }
-
-  return {ready: missing.length === 0, missing: [...new Set(missing)], ffmpegPath};
+      const module = requireFromRuntime(packageName);
+      const binary = typeof module === 'string' ? module : module.path;
+      if (binary && commandExists(binary, ['-version'])) return binary;
+    } catch {}
+    missing.push(name);
+    return null;
+  };
+  const ffmpegPath = resolveTool('ffmpeg', 'CODEX_FFMPEG_PATH', 'ffmpeg-static');
+  const ffprobePath = resolveTool('ffprobe', 'CODEX_FFPROBE_PATH', 'ffprobe-static');
+  return {ready: missing.length === 0, missing, ffmpegPath, ffprobePath};
 };

@@ -99,7 +99,7 @@ if (requestedModelPath) {
 fs.mkdirSync(runtimeDir, {recursive: true});
 fs.copyFileSync(path.join(scriptDir, 'runtime-package.json'), path.join(runtimeDir, 'package.json'));
 
-console.log('正在安装本地运行依赖和独立 ffmpeg…');
+console.log('正在安装本地运行依赖和独立 ffmpeg / ffprobe…');
 runCommand(npm.command, [
   ...npm.prefix,
   'install',
@@ -152,7 +152,8 @@ try {
 }
 
 const ffmpegPath = requireFromRuntime('ffmpeg-static');
-for (const requiredPath of [whisperExecutable, selectedModelPath, ffmpegPath]) {
+const ffprobePath = requireFromRuntime('ffprobe-static').path;
+for (const requiredPath of [whisperExecutable, selectedModelPath, ffmpegPath, ffprobePath]) {
   if (!requiredPath || !fs.existsSync(requiredPath)) {
     throw new Error(`安装后自检失败，缺少：${requiredPath || 'ffmpeg-static 可执行文件'}`);
   }

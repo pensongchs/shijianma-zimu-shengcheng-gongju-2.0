@@ -73,3 +73,18 @@ test('静音日志保留开头、内部和末尾停顿', () => {
   assert.deepEqual(parseSilences('silence_start: 0\nsilence_end: 0.2\nsilence_start: 0.8', 1000),
     [{startMs: 0, endMs: 200}, {startMs: 800, endMs: 1000}]);
 });
+
+
+test('标点自然断句，正文和词元标点完整保留', () => {
+  const r = build([segment('看房，先听。', 0, 1800, [token('看房', 0, 500, 50),
+    token('，', 500, 500, 50), token('先听', 700, 1400, 140), token('。', 1400, 1400, 140)])]);
+  assert.deepEqual(r.captions.map((c) => c.text), ['看房，', '先听。']);
+  assert.equal(r.fineCaptions.map((c) => c.text).join(''), '看房，先听。');
+});
+
+
+test('开头引号及带空格的标点不能丢失', () => {
+  const r = build([segment('“看房， 先听。”', 0, 1800, [token('“', 0, 0, -1), token('看房', 0, 500, 50),
+    token('， ', 500, 500, 50), token('先听', 700, 1400, 140), token('。”', 1400, 1400, 140)])]);
+  assert.equal(r.captions.map((c) => c.text).join(''), '“看房，先听。”');
+});

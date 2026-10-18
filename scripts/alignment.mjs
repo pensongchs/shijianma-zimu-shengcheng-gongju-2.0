@@ -69,15 +69,19 @@ const snap = (ms, side, silences, lower, upper) => {
 
 export const buildTimeline = ({raw, durationMs, silences = [], fps = null}) => {
   const units = [], warnings = [], phrases = [], issues = [];
-  let previousAnchor = null, previousEnd = 0, fallbackCount = 0, repeatedAnchorCount = 0;
+  let previousAnchor = null, previousEnd = 0, fallbackCount = 0, repeatedAnchorCount = 0, leadingPunctuation = '';
   for (const [segmentIndex, segment] of (raw.transcription ?? []).entries()) {
     const groups = joinTokens(segment, segmentIndex);
     let phrase = [];
     const flush = () => { if (phrase.length) phrases.push(phrase); phrase = []; };
     for (const group of groups) {
       if (!spoken(group.text)) {
-        if (/\s/u.test(group.text)) flush();
-        else if (phrase.length) units[phrase.at(-1)].text += group.text;
+        const punctuation = group.text.replace(/\s/gu, '');
+        if (punctuation) {
+          if (units.length) units.at(-1).text += punctuation;
+          else leadingPunctuation += punctuation;
+        }
+        if (/\s|[,，。！？!?;；]/u.test(group.text)) flush();
         if (group.anchorMs !== null && group.anchorMs >= (previousAnchor ?? 0)) previousAnchor = group.anchorMs;
         continue;
       }
@@ -112,9 +116,10 @@ export const buildTimeline = ({raw, durationMs, silences = [], fps = null}) => {
         throw new Error(`第 ${segmentIndex + 1} 段时间边界异常，停止导出以免丢字。`);
       }
       const index = units.length;
-      units.push({...group, text: phrase.length ? group.text : group.text.trimStart(), startMs, endMs,
+      units.push({...group, text: leadingPunctuation + (phrase.length ? group.text : group.text.trimStart()), startMs, endMs,
         timestampMs: group.anchorMs !== null && group.anchorMs >= startMs && group.anchorMs <= endMs ? group.anchorMs : null,
         timingSource});
+      leadingPunctuation = '';
       phrase.push(index);
       previousEnd = endMs;
       if (group.anchorMs !== null) previousAnchor = Math.max(previousAnchor ?? 0, group.anchorMs);
@@ -134,10 +139,10 @@ export const buildTimeline = ({raw, durationMs, silences = [], fps = null}) => {
   });
   const expectedText = (raw.transcription ?? []).map((s) => decodeBytes(s.text)).join('').replace(/\s/gu, '');
   if (expectedText !== captions.map((c) => c.text).join('').replace(/\s/gu, '')) {
-    throw new Error('字幕分段前后正文不一致，停止导出。');
+    throw new Error(`字幕分段前后正文不一致，停止导出。识别：${expectedText.slice(-160)}；合并：${captions.map((c) => c.text).join('').replace(/\s/gu, '').slice(-160)}`);
   }
-  const fineCaptions = units.map(({text, startMs, endMs, timestampMs, confidence}) =>
-    ({text, startMs, endMs, timestampMs, confidence}));
+  const fineCaptions = units.map(({text, startMs, endMs, timestampMs, confidence, timingSource}) =>
+    ({text, startMs, endMs, timestampMs, confidence, timingSource}));
   for (const [label, entries] of [['字幕', captions], ['精细时间轴', fineCaptions]]) {
     for (const [i, c] of entries.entries()) {
       if (!c.text || !Number.isInteger(c.startMs) || !Number.isInteger(c.endMs) || c.startMs < 0

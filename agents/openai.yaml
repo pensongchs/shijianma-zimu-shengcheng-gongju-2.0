@@ -1,4 +1,4 @@
 interface:
-  display_name: "生成带时间码字幕"
-  short_description: "把音频或视频转成 SRT 字幕和 Remotion 时间轴"
-  default_prompt: "使用 $generate-timestamped-subtitles 把这个音频或视频生成带时间码字幕。"
+  display_name: "时间码字幕生成工具2.0"
+  short_description: "提取音视频字幕，保留完整视频时长、停顿和绝对帧位置，方便剪映替换画面"
+  default_prompt: "使用 $generate-timestamped-subtitles 为这个视频生成带时间码字幕和视频对齐信息。"
