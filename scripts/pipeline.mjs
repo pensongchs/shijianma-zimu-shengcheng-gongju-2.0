@@ -22,8 +22,16 @@ export const parseArgs = (args) => {
     } else if (args[i].startsWith('--')) throw new Error(`未知参数：${args[i]}`);
     else positional.push(args[i]);
   }
-  if (!positional[0] || positional.length > 3) throw new Error('用法：输入路径 [成品名] [输出目录] [--fps 30]');
+  if (!positional[0] || positional.length > 3) throw new Error('用法：输入路径 [当期中文主题] [输出目录] [--fps 30]');
   return {inputPath: path.resolve(positional[0]), name: positional[1], outputDir: positional[2], fps};
+};
+export const resolveDeliveryTheme = (name, inputPath) => {
+  const theme = (name?.trim() || path.basename(inputPath, path.extname(inputPath)))
+    .normalize('NFC').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/\s+/g, '_').replace(/^_+|_+$/g, '');
+  if (!/\p{Script=Han}/u.test(theme)) {
+    throw new Error('请提供当期文案的中文主题作为成品名，例如“2027年买新房还是二手房”；不能用英文名或随机文件编号交付。');
+  }
+  return theme;
 };
 export const formatSrtTime = (ms) => {
   const total = Math.round(ms);
@@ -43,11 +51,11 @@ export const extractTimelineAudio = ({inputPath, wavPath, clock, ffmpeg = 'ffmpe
 
 export const transcribe = ({inputPath, name, outputDir, fps, ffmpeg = 'ffmpeg', ffprobe = 'ffprobe', whisperExecutable, modelPath, modelPreset = 'small'}) => {
   if (!fs.existsSync(inputPath) || !fs.statSync(inputPath).isFile()) throw new Error(`找不到输入文件：${inputPath}`);
+  const safeName = resolveDeliveryTheme(name, inputPath);
   for (const file of [whisperExecutable, modelPath]) if (!file || !fs.existsSync(file)) throw new Error(`缺少现有转写依赖：${file}`);
   for (const command of [ffmpeg, ffprobe]) execute(command, ['-version'], {stdio: 'ignore'});
   const probe = JSON.parse(execFileSync(ffprobe, ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', inputPath], {encoding: 'utf8'}));
   const clock = sourceClock(probe, fps);
-  const safeName = (name || path.basename(inputPath, path.extname(inputPath))).replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').replace(/^_+|_+$/g, '') || '未命名音频';
   const dest = path.resolve(outputDir || path.join(path.dirname(inputPath), '字幕文件'));
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'subtitle-timecode-v2-'));
   try {
